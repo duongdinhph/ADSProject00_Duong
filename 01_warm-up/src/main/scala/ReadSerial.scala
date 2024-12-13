@@ -110,7 +110,9 @@ class Counter extends Module{
       when(io.reset_n === 0.B & io.cnt_en === 1.B){
         state := State.sCount
         cnt := cnt + 1.U
-      } 
+      } .elsewhen(io.reset_n === 0.B & io.cnt_en === 0.B){
+        state := State.sIdle
+      }
     }
 
     is(State.sIdle){
@@ -121,6 +123,7 @@ class Counter extends Module{
       } .otherwise{
         when(io.cnt_en === 1.B){
           state := State.sCount
+          cnt := cnt + 1.U
         }
       }
     }
@@ -134,22 +137,84 @@ class Counter extends Module{
         when(cnt === 7.U){
           cnt := 0.U
           io.cnt_s := 1.B 
-          when(io.cnt_en === 0.B){
-            delay_when_finish := 1.B
-          }
+          state := State.sIdle
+        } .elsewhen(io.cnt_en  === 0.B){
+          state := State.sIdle
         } 
-        .elsewhen(io.cnt_en === 1.B & delay_when_finish === 0.B){
+        .otherwise{
           cnt := cnt + 1.U 
-        }
-        .elsewhen(delay_when_finish === 1.B & cnt === 0.U)
-        {
-          delay_when_finish := 0.B
         }
       }
     }
   }
 }
 
+
+// /** counter class */ complex version 
+// class Counter extends Module{
+  
+//   val io = IO(new Bundle {
+//     val reset_n = Input(UInt(1.W))
+//     val cnt_en = Input(UInt(1.W))
+//     val cnt_s = Output(UInt(1.W))
+//     })
+//   object State extends ChiselEnum {
+//     val sReset, sIdle, sCount = Value
+//   }
+//   // set initial state
+//   val state = RegInit(State.sReset)
+//   val delay_when_finish = RegInit(0.U(1.W))
+//   // internal variables
+//   val cnt = RegInit(0.U(3.W))
+//   // default values for output
+//   io.cnt_s := 0.B
+//   // state machine transition
+//   switch(state) {
+//     is(State.sReset){
+//       cnt := 0.U
+//       io.cnt_s := 0.B
+//       when(io.reset_n === 0.B & io.cnt_en === 1.B){
+//         state := State.sCount
+//         cnt := cnt + 1.U
+//       } 
+//     }
+
+//     is(State.sIdle){
+//       when(io.reset_n === 1.B){
+//         state := State.sReset
+//         cnt := 0.U
+//         io.cnt_s := 0.B
+//       } .otherwise{
+//         when(io.cnt_en === 1.B){
+//           state := State.sCount
+//         }
+//       }
+//     }
+
+//     is(State.sCount){
+//       when(io.reset_n === 1.B){
+//         state := State.sReset
+//         cnt := 0.U
+//         io.cnt_s := 0.B 
+//       } .otherwise{
+//         when(cnt === 7.U){
+//           cnt := 0.U
+//           io.cnt_s := 1.B 
+//           when(io.cnt_en === 0.B){
+//             delay_when_finish := 1.B
+//           }
+//         } 
+//         .elsewhen(io.cnt_en === 1.B & delay_when_finish === 0.B){
+//           cnt := cnt + 1.U 
+//         }
+//         .elsewhen(delay_when_finish === 1.B & cnt === 0.U)
+//         {
+//           delay_when_finish := 0.B
+//         }
+//       }
+//     }
+//   }
+// }
 
 
 /** shift register class */
