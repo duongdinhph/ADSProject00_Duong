@@ -8,70 +8,163 @@ package readserial
 
 import chisel3._
 import chisel3.util._
-
+import chisel3.experimental.ChiselEnum
 
 /** controller class */
 class Controller extends Module{
   
   val io = IO(new Bundle {
-    /* 
-     * TODO: Define IO ports of a the component as stated in the documentation
-     */
+    val reset_n = Input(UInt(1.W))
+    val rxd = Input(UInt(1.W))
+    val cnt_s = Input(UInt(1.W))
+    val cnt_en = Output(UInt(1.W))
+    val valid = Output(UInt(1.W))
     })
+  object State extends ChiselEnum {
+    val sReset, sWait, sStart, sFinish = Value
+  }
+  // init state
+  val state = RegInit(State.sReset)
+  //default output
+  io.cnt_en :=  0.B 
+  io.valid := 0.B
+  // state machine transition
 
-  // internal variables
-  /* 
-   * TODO: Define internal variables (registers and/or wires), if needed
-   */
+  switch(state){
+    is(State.sReset){
+      when(io.reset_n === 1.B){
+        io.valid := 0.B
+        io.cnt_en := 0.B
+      } .elsewhen(io.rxd === 1.B){
+        state := State.sWait
+      } .elsewhen(io.rxd === 0.B){
+        state := State.sStart
+      }
+    }
 
-  // state machine
-  /* 
-   * TODO: Describe functionality if the controller as a state machine
-   */
+    is(State.sWait){
+      when(io.reset_n === 1.B){
+        io.valid := 0.B
+        io.cnt_en := 0.B
+        state := State.sReset
+      } .elsewhen(io.rxd === 0.B){
+        state := State.sStart
+      }
+    }
+
+    is(State.sStart){
+      when(io.reset_n === 1.B){
+        io.valid := 0.B
+        io.cnt_en := 0.B
+        state := State.sReset
+      } .elsewhen(io.cnt_s  === 1.B){
+        state := State.sFinish
+        io.cnt_en := 1.B
+      } .otherwise{
+        io.cnt_en := 1.B 
+      }
+    }
+
+    is(State.sFinish){
+      when(io.reset_n === 1.B){
+        io.valid := 0.B
+        io.cnt_en := 0.B
+        state := State.sReset
+      } .elsewhen(io.rxd === 0.B){
+        io.valid := 1.B 
+        io.cnt_en := 0.B 
+        state := State.sStart
+      } .elsewhen(io.rxd === 1.B){
+        io.valid := 1.B
+        io.cnt_en := 0.B 
+        state := State.sWait
+      }
+    }
+  }
 
 }
-
 
 /** counter class */
 class Counter extends Module{
   
   val io = IO(new Bundle {
-    /* 
-     * TODO: Define IO ports of a the component as stated in the documentation
-     */
+    val reset_n = Input(UInt(1.W))
+    val cnt_en = Input(UInt(1.W))
+    val cnt_s = Output(UInt(1.W))
     })
-
+  object State extends ChiselEnum {
+    val sReset, sIdle, sCount = Value
+  }
+  // set initial state
+  val state = RegInit(State.sReset)
+  val delay_when_finish = RegInit(0.U(1.W))
   // internal variables
-  /* 
-   * TODO: Define internal variables (registers and/or wires), if needed
-   */
+  val cnt = RegInit(0.U(3.W))
+  // default values for output
+  io.cnt_s := 0.B
+  // state machine transition
+  switch(state) {
+    is(State.sReset){
+      cnt := 0.U
+      io.cnt_s := 0.B
+      when(io.reset_n === 0.B & io.cnt_en === 1.B){
+        state := State.sCount
+        cnt := cnt + 1.U
+      } 
+    }
 
-  // state machine
-  /* 
-   * TODO: Describe functionality if the counter as a state machine
-   */
+    is(State.sIdle){
+      when(io.reset_n === 1.B){
+        state := State.sReset
+        cnt := 0.U
+        io.cnt_s := 0.B
+      } .otherwise{
+        when(io.cnt_en === 1.B){
+          state := State.sCount
+        }
+      }
+    }
 
-
+    is(State.sCount){
+      when(io.reset_n === 1.B){
+        state := State.sReset
+        cnt := 0.U
+        io.cnt_s := 0.B 
+      } .otherwise{
+        when(cnt === 7.U){
+          cnt := 0.U
+          io.cnt_s := 1.B 
+          when(io.cnt_en === 0.B){
+            delay_when_finish := 1.B
+          }
+        } 
+        .elsewhen(io.cnt_en === 1.B & delay_when_finish === 0.B){
+          cnt := cnt + 1.U 
+        }
+        .elsewhen(delay_when_finish === 1.B & cnt === 0.U)
+        {
+          delay_when_finish := 0.B
+        }
+      }
+    }
+  }
 }
+
+
 
 /** shift register class */
 class ShiftRegister extends Module{
   
   val io = IO(new Bundle {
-    /* 
-     * TODO: Define IO ports of a the component as stated in the documentation
-     */
+    val rxd = Input(UInt(1.W))
+    val data = Output(UInt(8.W))
     })
 
-  // internal variables
-  /* 
-   * TODO: Define internal variables (registers and/or wires), if needed
-   */
+  val shift_reg = RegInit(0.U(8.W))
 
   // functionality
-  /* 
-   * TODO: Describe functionality if the shift register
-   */
+  shift_reg := Cat(shift_reg(6,0), io.rxd)
+  io.data := shift_reg
 }
 
 /** 
@@ -88,22 +181,30 @@ class ShiftRegister extends Module{
 class ReadSerial extends Module{
   
   val io = IO(new Bundle {
-    /* 
-     * TODO: Define IO ports of a the component as stated in the documentation
-     */
+    val reset_n = Input(UInt(1.W))
+    val rxd = Input(UInt(1.W))
+    val valid = Output(UInt(1.W))
+    val data = Output(UInt(8.W))
     })
 
 
   // instanciation of modules
-  /* 
-   * TODO: Instanciate the modules that you need
-   */
+    val ins_controller = Module(new Controller())
+    val ins_counter = Module(new Counter())
+    val ins_shift_register = Module(new ShiftRegister())
 
   // connections between modules
-  /* 
-   * TODO: connect the signals between the modules
-   */
+    ins_controller.io.reset_n := io.reset_n
+    ins_controller.io.rxd := io.rxd 
+    ins_controller.io.cnt_s := ins_counter.io.cnt_s
 
+    ins_counter.io.reset_n := io.reset_n
+    ins_counter.io.cnt_en := ins_controller.io.cnt_en
+
+    ins_shift_register.io.rxd :=  io.rxd 
+
+    io.valid := ins_controller.io.valid 
+    io.data := ins_shift_register.io.data  
   // global I/O 
   /* 
    * TODO: Describe output behaviour based on the input values and the internal signals
